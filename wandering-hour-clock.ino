@@ -11,15 +11,29 @@
    mSec per step. It also depends on the amount of current your power
    supply can provide.
 */
+
+/*  todo für Katjas Uhr
+  c - Alternativen für SSID und Passwort
+  - alternatives Soundschema ?
+  - bestimmter Sound zur Frühstückszeit? konfigurierbar ?
+  c - automatische Umstellung auf Sommer/Winterzeit?  - experimental, ABSCHALTBAR
+  - Weckerfunktion?
+  c - erst Bewegung, dann sound
+  c - easteregg:  special sound zum Geburtstag
+  - Kommentare in Englisch, code aufräumen. html wieder auf Englisch
+
+
+*/
 #include <WiFi.h>
 #include <ESPmDNS.h>
 #include <WiFiUdp.h>
 #include <ArduinoOTA.h>
 #include <TimeLib.h>  // https://github.com/PaulStoffregen/Time
 #include <WebServer.h>
+#include <DFRobotDFPlayerMini.h>   // for audio aoutput via DFPlayerMini-module
 #include <Preferences.h>
 
-#include <Stepper.h>
+#include <StepperWidle.h>
 
 #include "secrets.h"
 
@@ -28,7 +42,7 @@ const char* ssid = SECRET_SSID;
 const char* password = SECRET_PASSWORD;
 
 // Hostname
-const char* hostname = "wandering-hour-clock";
+const char* hostname = "Katjas-Tardis-Uhr";
 
 // Preferences library namespace and keys. The library
 // limits the namespace and attrib length to 16 characters max.
@@ -36,28 +50,69 @@ const char* pref_namespace = "whc"; // "Wandering Hour Clock"
 const char* attrib_tzhours = "tzhours";
 const char* attrib_tzmins = "tzmins";
 const char* attrib_isdst = "isdst";
+const char* attrib_volume = "volume";
+const char* attrib_sonoff = "sonoff";
+const char* attrib_msteps = "msteps";
 
 const int stepsPerRev = 2048; /* steps / rev for stepper motor */
-const int maxSpeed = 8;   /* max speed stepper RPM, conservative */
+const int maxSpeed = 4;   /* max speed stepper RPM, conservative    -    original value was 8*/
+const int steps_correction = 0;  // steps correction value, added every minute
 const int led = 13;   /* built-in led */
 
 #define IN1 19
 #define IN2 18
 #define IN3 5
-#define IN4 17
+#define IN4 23  // 17 now used for DFPlayer
+
+#define RXD2 16 // serial port for DFPLayer
+#define TXD2 17
+
 
 int stepDelay;      /* minimum delay / step in uSec */
+int nstrikes;  // number of strikes every full hour, for sound output
+int msteps;  // manual steps for debugging
+bool setidle = true;  // sets stepper idle after each movement if true
+int delay_until_idle = 500;   // delay in milliseconds whereafter the stepper is set to idle
 unsigned int updateIntervalMinutes = 1;
 unsigned long pMinute = 0;
 unsigned long cMinute;
 unsigned long cHour;
 unsigned long pHour;
 
+
+bool qsound = false;  // true, if sound for every quarter of an hour has already been played
+bool hsound = false;  // ... same for full hours soundoutput
+
+bool autoDST = true;  // automatic setting for DST switched on/off
+
+
+unsigned long easteregg_month = 2;   // "easter egg"  -  plays a certain sound at a specific date, e.g. a birthday song
+unsigned long easteregg_day = 1;
+
+
+
+boolean summertime_EU(int year, byte month, byte day, byte hour, byte tzHours)
+// European Daylight Savings Time calculation by "jurs" for German Arduino Forum
+// input parameters: "normal time" for year, month, day, hour and tzHours (0=UTC, 1=MEZ)
+// return value: returns true during Daylight Saving Time, false otherwise
+{ 
+  if (month<3 || month>10) return false; // keine Sommerzeit in Jan, Feb, Nov, Dez
+  if (month>3 && month<10) return true; // Sommerzeit in Apr, Mai, Jun, Jul, Aug, Sep
+  if (month==3 && (hour + 24 * day)>=(1 + tzHours + 24*(31 - (5 * year /4 + 4) % 7)) || month==10 && (hour + 24 * day)<(1 + tzHours + 24*(31 - (5 * year /4 + 1) % 7))) 
+    return true; 
+  else 
+    return false;
+}
+
+
 // initialize web server library
 WebServer server(80); // Create a WebServer object that listens on port 80
 
 // initialize the stepper library
-Stepper myStepper(stepsPerRev, IN1, IN3, IN2, IN4);
+StepperWidle myStepper(stepsPerRev, IN1, IN3, IN2, IN4);
+
+// initialize library for DFPlayer
+DFRobotDFPlayerMini myDFPlayer;
 
 Preferences preferences;
 
@@ -68,16 +123,22 @@ int retryCount = 0;             // Wifi connection retry count
 const int maxRetryCount = 10;  // Maximum number of retry attempts
 
 // Define the NTP server and timezone offset
-static const char ntpServerName[] = "us.pool.ntp.org";
+//static const char ntpServerName[] = "us.pool.ntp.org";
 //static const char ntpServerName[] = "time.nist.gov";
+static const char ntpServerName[] = "ptbtime1.ptb.de";   // PTB Braunschweig, Germany
 
-long timeZoneOffsetHours = 0;
+long timeZoneOffsetHours = 1;
 long timeZoneOffsetMins = 0;
 bool isDst = false;
+
+bool soundOn = true;  // no sound at all if set to false;
+long volume = 25; // volume for DFPlayer  0 .. 30
 
 time_t getNtpMinute();
 void sendNTPpacket(IPAddress &address);
 void handleDialAdjustments(int, int);
+
+
 
 
 void setupWiFi() {
@@ -108,9 +169,14 @@ void setupWiFi() {
     delay(1000);
     Serial.println("Connecting to WiFi...");
     retryCount++;
+    if (retryCount >= maxRetryCount/2) {  // try to login using the alternative SSID and password
+      Serial.println("Failed to connect to WiFi. Using alternative SSID and password ....");
+      ssid = SECRET_SSID2;
+      password = SECRET_PASSWORD2;
+    }
     if (retryCount >= maxRetryCount) {
-      Serial.println("Failed to connect to WiFi. Restarting...");
-      ESP.restart();  // If maximum retry count is reached, restart the board
+        Serial.println("Failed to connect to WiFi. Restarting...");
+        ESP.restart();  // If maximum retry count is reached, restart the board
     }
   }
   retryCount = 0;  // Reset retry count on successful connection
@@ -120,24 +186,65 @@ void setupWiFi() {
 
 void setupTz() {
   preferences.begin(pref_namespace, true); // Readonly mode
-
   // Default to UTC
   timeZoneOffsetHours = preferences.getLong(attrib_tzhours, 0);
   timeZoneOffsetMins = preferences.getLong(attrib_tzmins, 0);
   isDst = preferences.getBool(attrib_isdst, false);
+  preferences.end();
+}
 
+void setupSound()  {
+  preferences.begin(pref_namespace, true); // Readonly mode
+  volume = preferences.getLong(attrib_volume, 10);
+  soundOn = preferences.getBool(attrib_sonoff, true);
+  myDFPlayer.volume(volume);  // setting volume
+  Serial.print("DFPlayer volume set to ");
+  Serial.println(volume);
+  preferences.end();
+}
+
+void setupmsteps() {     // manual steps, for fine tuning the position or debugging
+  preferences.begin(pref_namespace, true); // Readonly mode
+  msteps = preferences.getLong(attrib_msteps, 0);
+  Serial.print("manual steps movement: ");
+  Serial.println(msteps);
+  myStepper.step(msteps);
+  setIdle();
   preferences.end();
 }
 
 void setup() {
   Serial.begin(115200);
   Serial.println("Booting");
+  
+  Serial2.begin(9600, SERIAL_8N1, RXD2, TXD2);  // setup DFPlayer
+  myDFPlayer.begin(Serial2);
+  if(Serial2.available() >0) {
+     Serial.println("Serial is available."); 
+     Serial.println("DFPlayer connected");
+  } else {
+      Serial.println("Serial is not available.");
+      Serial.println("DFPlayer not connected.");
+  }
+
+  // test DFPlayer
+  if (soundOn == true) {
+  myDFPlayer.volume(volume);  //0..30
+  myDFPlayer.playFolder(15, 4);  //play specific mp3 in SD:/15/004.mp3; Folder Name(1~99); File Name(1~255)
+  //while(myDFPlayer.readType() != DFPlayerPlayFinished) {
+  //delay(4500); 
+  //myDFPlayer.playFolder(15, 5);
+  }
+
 
   // Setup Wi-Fi connection
   setupWiFi();
 
   // Setup time zone variables
   setupTz();
+
+  // Setup sound preference variables
+  setupSound();
 
   // Initialize the NTP client and sync with the NTP server
   udp.begin(localPort);
@@ -208,6 +315,15 @@ void setup() {
 }
 
 
+void setIdle () {
+ if (setidle) {
+  delay(delay_until_idle); 
+  myStepper.idle();
+ }
+}
+
+
+
 void loop() {
   //  Handle Arduino OTA upload requests
   ArduinoOTA.handle();
@@ -233,6 +349,8 @@ void loop() {
   /* Every updateIntervalMinutes minutes, do a little move */
   cMinute = localTime.tm_min;;
 
+
+
   if (cMinute != pMinute && cMinute >= (pMinute + updateIntervalMinutes) % 60) { /* time for update? - every updateIntervalMinutes minutes */
     /*
     Calculation for minute difference
@@ -250,6 +368,14 @@ void loop() {
     pMinute = cMinute;
     cStep = (stepsPerRev * diffMinute) / 60;  /* desired motor position - 170 steps every 5 minutes */
 
+    cStep = cStep + steps_correction;   // correction value !
+    
+    if (cMinute % 7 == 0  && cMinute != 0) {
+      Serial.println("at minutes 7, 14, 21, 28, 35, 42, 49, 56 :  1 additional step ! ");
+      cStep = cStep + 1;
+    }
+
+
     // Debug prints
     Serial.print(diffMinute);
     Serial.print(" minute(s), ");
@@ -257,11 +383,40 @@ void loop() {
     Serial.print(" steps");
     Serial.println();
 
+    myStepper.setSpeed(maxSpeed/2);
     myStepper.step(cStep);
+    setIdle();
+    myStepper.setSpeed(maxSpeed);
+
+    // sound output routines
+
+    if (soundOn == true) {
+      // sound output - strikes every full hour 
+
+      if (cMinute == 0 && hsound ==false) {    
+        if (day() == easteregg_day && month() == easteregg_month) { 
+          myDFPlayer.playFolder(15, 10); 
+          hsound = true;  
+        }                             
+        nstrikes = localTime.tm_hour % 12;
+        if (nstrikes == 0) nstrikes = 12;
+        if (hsound == false) for (int y=1; y <= nstrikes; y++) {myDFPlayer.playFolder(1, 1); delay(2000); } 
+        hsound = true;
+      }  
+      if (cMinute > 0) hsound = false;
+      
+      // ... and sound output every 15 minutes
+      if (cMinute == 15 && qsound == false)      { myDFPlayer.playFolder(4, 15); qsound = true; }
+      if (cMinute == 30 && qsound == false)      { myDFPlayer.playFolder(4, 30); qsound = true; }
+      if (cMinute == 45 && qsound == false)      { myDFPlayer.playFolder(4, 45); qsound = true; }
+      if (cMinute % 15  == 1) qsound = false;  // eine Minute später wieder auf false setzen
+      }
+
     return;
   }
 
-  // Handle hour offsets
+  // Handle hour offsets    ..... this is the original code, this is done now by 1 additional step every 7 minutes
+  /*
   cHour = localTime.tm_hour % 12;
   if (cHour != pHour && cHour >= ((pHour + 1) % 12)) {
     int stepsPerMinute = stepsPerRev / 60; // 1 rev = 60 minutes = 2048 steps => 34 (int) steps per minute instead of 34.133333
@@ -271,18 +426,24 @@ void loop() {
     int diffHour = (cHour - pHour + 12) % 12;
     Serial.print("Hour complete: ");
     Serial.print(missingSteps*diffHour);
-    Serial.print("recovering missed steps");
-    Serial.println("");
+    Serial.print("recovering missed steps: ");
+    Serial.println(missingSteps);
     if (missingSteps > 0) {
+      myStepper.setSpeed(maxSpeed/2);
       myStepper.step(missingSteps);
+      myStepper.idle();
+      myStepper.setSpeed(maxSpeed);
     }
     pHour = cHour;
   }
+  */
+
+ 
 }
 
 void handleRoot() {
   String html = "<html><head>";
-  html += "<title>Wandering Hour Clock</title>";
+  html += "<title>Katjas Tardis-Uhr</title>";
   html += "  <meta name='viewport' content='width=device-width, initial-scale=1'>";
   html += "  <style>";
   html += "    body {";
@@ -326,8 +487,10 @@ void handleRoot() {
   html += "  </style>";
   html += "</head><body>";
   html += "<div class='container'>";
-  html += "<h2>Set Time</h2>";
-  html += "<h3>Set the time you see on the clock now. Click submit to adjust the dial to current time automatically</h3>";
+  html += "<h2>KATJAS TARDIS-UHR</h2>";
+  html += "<h2>Zeit einstellen</h2>";
+
+  html += "<h3>Stelle die Zeit ein, die die Uhr jetzt anzeigt. Klicke dann auf 'Set Time'</h3>";
   html += "<form method='POST' action='/submit'>";
   html += "<label for='hour'>Hour (1-12):</label><input type='number' id='hour' name='hour' min='1' max='12' required><br>";
   html += "<label for='minute61813414'>Minute (0-59):</label><input type='number' id='minute' name='minute' min='0' max='59' required><br>";
@@ -337,11 +500,14 @@ void handleRoot() {
   html += "<form method='POST' action='/recycle'><button type='submit'>Recycle</button></form></body></html>";
   html += "<form method='POST' action='/demo'><button type='submit'>Demo</button></form></body></html>";
 
-  html += "<h2>Preferences</h2>";
+  html += "<h2>Einstellungen</h2>";
   html += "<form method='POST' action='/set-preferences'>";
-  html += "<label for='TZ hour offset'>TZ hour offset:</label><input type='number' id='hour_offset' name='hour_offset' min='-14' max='12' value='" + String(timeZoneOffsetHours) + "' required><br>";
-  html += "<label for='TZ minute offset'>TZ minute offset:</label><input type='number' id='minute_offset' name='minute_offset' min='0' max='59' value='" + String(timeZoneOffsetMins) + "' required><br>";
-  html += "<label for='DST'>Daylight Savings Time currently in effect?</label><input type='checkbox' id='dst' name='dst'" + String( isDst ? "checked" : "") + "><br>";
+  html += "<label for='TZ hour offset'>Zeitzone - Korrektur Stunden:</label><input type='number' id='hour_offset' name='hour_offset' min='-14' max='12' value='" + String(timeZoneOffsetHours) + "' required><br>";
+  html += "<label for='TZ minute offset'>Zeitzone - Korrektur Minuten:</label><input type='number' id='minute_offset' name='minute_offset' min='0' max='59' value='" + String(timeZoneOffsetMins) + "' required><br>";
+  html += "<label for='DST'>Daylight Savings Time currently in effect?</label><input type='checkbox' id='dst' name='dst'" + String( isDst ? "checked" : "") + "><br><br>";
+  html += "<label for='soundonoff'>Sound ein</label><input type='checkbox' id='sonoff' name='sonoff'" + String( soundOn ? "checked" : "") + "><br><br>";
+  html += "<label for='Volume'>Lautstaerke:</label><input type='number' id='lautstaerke' name='lautstaerke' min='1' max='30' value='" + String(volume) + "' required><br>";
+  html += "<label for='manualSteps'>manuelle Schritte:</label><input type='number' id='manuelleschritte' name='manuelleschritte' min='-4000' max='4000' value='" + String(msteps) + "' required><br>";
   html += "<button type='submit'>Save preferences</button></form>";
 
   html += "<h2>Debug Info</h2>";
@@ -349,6 +515,9 @@ void handleRoot() {
   html += "<br/><div>pHour: pMinute = " + String(pHour) + ":" + (pMinute < 10 ? "0" : "") + String(pMinute) + "</div>";
   html += "<br/><div>timeZoneOffsetHours : timeZoneOffsetMins = " + String(timeZoneOffsetHours) + ":" + (timeZoneOffsetMins < 10 ? "0" : "") + String(timeZoneOffsetMins) + "</div>";
   html += "<br/><div>isDst = " + String(isDst ? "true" : "false") + "</div>";
+  html += "<br/><div>soundOn = " + String(soundOn ? "true" : "false") + "</div>";
+  html += "<br/><div>Laustaerke = " + String(volume);
+
   html += "<br/><div>hostname = " + String(hostname) + "</div>";
 
   server.send(200, "text/html", html);
@@ -357,12 +526,15 @@ void handleRoot() {
 void handleFormForward5() {
   Serial.println("full rotation counterclockwise");
   myStepper.step(-stepsPerRev);
+  setIdle();
 
   Serial.println("full rotation clockwise");
   myStepper.step(stepsPerRev);
+  setIdle();
 
   Serial.println("Jump 5m");
   myStepper.step((stepsPerRev * 5) / 60);
+  setIdle();
 
   server.send(200, "text/plain", "Moved 5 minutes Forward");
 }
@@ -370,12 +542,15 @@ void handleFormForward5() {
 void handleFormBackward5() {
   Serial.println("full rotation counterclockwise");
   myStepper.step(-stepsPerRev);
+  setIdle();
 
   Serial.println("full rotation clockwise");
   myStepper.step(stepsPerRev);
+  setIdle();
 
-  Serial.println("Jump 5m");
+  Serial.println("Jump 5m"); 
   myStepper.step(-1 * (stepsPerRev * 5) / 60);
+  setIdle();
 
 
   server.send(200, "text/plain", "Moved 5 minutes Backward");
@@ -384,9 +559,11 @@ void handleFormBackward5() {
 void handleFormRecycle() {
   Serial.println("full rotation counterclockwise");
   myStepper.step(-stepsPerRev);
+  setIdle();
 
   Serial.println("full rotation clockwise");
   myStepper.step(stepsPerRev);
+  setIdle();
 
   server.send(200, "text/plain", "Cycle complete");
 }
@@ -395,6 +572,7 @@ void handleFormRecycle() {
 void handleFormDemo() {
   Serial.println("full rotation clockwise");
   myStepper.step(stepsPerRev*12);
+  setIdle();
 
   server.send(200, "text/plain", "Demo 12h Cycle complete");
 }
@@ -430,6 +608,11 @@ void handleDialAdjustments(int iHour, int iMinute) {
   Serial.println(minuteDiff);
 
   int minuteDifference = hourMinDiff + minuteDiff;
+  // calculate shortest way to correct position
+  if (minuteDifference < -360) minuteDifference = 720 + minuteDifference;
+  if (minuteDifference > 360) minuteDifference = 720 - minuteDifference;
+
+
 
   // Print the time difference in seconds
   Serial.print("Time difference: ");
@@ -440,7 +623,10 @@ void handleDialAdjustments(int iHour, int iMinute) {
   int steps = minuteDifference * stepsPerRev / 60; // 60 minutes = stepsPerRev => timeDiff * stepsPerRev / 60 offset steps required
   Serial.print(steps);
   Serial.println(" adjusting steps");
+  myStepper.setSpeed(maxSpeed/2);
   myStepper.step(steps);
+  setIdle();
+  myStepper.setSpeed(maxSpeed);
 
 }
 
@@ -449,6 +635,9 @@ void handleFormSetPreferences() {
     int tmp_hour_offset = server.arg("hour_offset").toInt();
     int tmp_minute_offset = server.arg("minute_offset").toInt();
     bool tmp_dst = server.hasArg("dst");
+    bool tmp_sonoff = server.hasArg("sonoff");
+    int tmp_volume = server.arg("lautstaerke").toInt();
+    int tmp_msteps = server.arg("manuelleschritte").toInt();
 
     if (tmp_hour_offset >= -14 && tmp_hour_offset <= 12 && tmp_minute_offset >= 0 && tmp_minute_offset <= 59) {
       Serial.print("Setting hour offset: ");
@@ -462,10 +651,19 @@ void handleFormSetPreferences() {
       preferences.putLong(attrib_tzhours, tmp_hour_offset);
       preferences.putLong(attrib_tzmins, tmp_minute_offset);
       preferences.putBool(attrib_isdst, tmp_dst);
+      preferences.putBool(attrib_sonoff, tmp_sonoff);
+      preferences.putLong(attrib_volume, tmp_volume);
+      preferences.putLong(attrib_msteps, tmp_msteps);
       preferences.end();
 
       // reread and sync the global variables with the preferences values
       setupTz();
+
+      // do manual steps
+      setupmsteps();
+
+      // also with sound prefs
+      setupSound();
 
       // force a time sync now
       setTime(getNtpMinute());
@@ -546,6 +744,11 @@ time_t getNtpMinute()
       secs += timeZoneOffsetHours * SECS_PER_HOUR;
       secs += (timeZoneOffsetHours < 0 ? -timeZoneOffsetMins : timeZoneOffsetMins) * SECS_PER_MIN;
       secs += (isDst ? SECS_PER_HOUR : 0);
+
+      Serial.print("time received from NTP is "); Serial.print(hour()); Serial.print(":"); Serial.print(minute()); Serial.print("  ");
+      Serial.print(day()); Serial.print("."); Serial.print(month()); Serial.print("."); Serial.println(year());
+      if (autoDST) isDst =  summertime_EU(year(), month(), day(), hour(), 1);    // calculate if it is DST or not
+      if (isDst == true) { Serial.println("actual is daylight saving time"); } else { Serial.println("actual is NO daylight saving time"); }
 
       return secs;
 
