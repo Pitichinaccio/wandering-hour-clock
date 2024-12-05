@@ -1,6 +1,12 @@
 # Wandering Hour Clock
 
 An improved version of 3D printed [wandering hour clock](https://www.printables.com/model/327198-improved-wandering-hour-clock).
+Things I added:
+- alternative SSID and password für wfif connection
+- sound output via DFplayer-module, strikes every hour and every 15 minutes
+- automatic detection of DST (experimental)
+- setting additional manual steps, e.g. for fine tuning of the position
+- "easter egg", playing a certain soundfile at a specific date, e.g. a birthday song
 
 ## Instructions
 
