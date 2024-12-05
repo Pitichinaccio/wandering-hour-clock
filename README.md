@@ -18,14 +18,12 @@ Things I added:
 - Any ESP board with wifi. e.g. ESP32, ESP8266
 - 28BYJ-48 unipolar stepper motor
 - ULN2003 motor driver
+- Mini MP3 Player DFPlayer Module with SD card
 - 5V power supply (preferrably with 2A+)
 - Jumper wires
 
 ### Wiring Diagram
-- Wiring instructions for [ESP32](https://randomnerdtutorials.com/esp32-stepper-motor-28byj-48-uln2003/), [ESP8266](https://randomnerdtutorials.com/esp8266-nodemcu-stepper-motor-28byj-48-uln2003/)
 
-![Wiring Diagram](images/ESP32-Stepper-Motor-Schematic-Diagram-Wiring_bb.webp)
-(Image Credit: https://randomnerdtutorials.com)
 
 ### Arduino Sketch
 - The arduino code in this project adds the following additional features
