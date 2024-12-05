@@ -12,7 +12,7 @@
    supply can provide.
 */
 
-/*  todo für Katjas Uhr
+/*  todo 
   c - Alternativen für SSID und Passwort
   - alternatives Soundschema ?
   - bestimmter Sound zur Frühstückszeit? konfigurierbar ?
@@ -42,7 +42,7 @@ const char* ssid = SECRET_SSID;
 const char* password = SECRET_PASSWORD;
 
 // Hostname
-const char* hostname = "Katjas-Tardis-Uhr";
+const char* hostname = "wandering-hour-clock";
 
 // Preferences library namespace and keys. The library
 // limits the namespace and attrib length to 16 characters max.
@@ -443,7 +443,7 @@ void loop() {
 
 void handleRoot() {
   String html = "<html><head>";
-  html += "<title>Katjas Tardis-Uhr</title>";
+  html += "<title>Wandering Hour Clock</title>";
   html += "  <meta name='viewport' content='width=device-width, initial-scale=1'>";
   html += "  <style>";
   html += "    body {";
@@ -487,7 +487,7 @@ void handleRoot() {
   html += "  </style>";
   html += "</head><body>";
   html += "<div class='container'>";
-  html += "<h2>KATJAS TARDIS-UHR</h2>";
+  html += "<h2>WANDERING HOUR CLOCK</h2>";
   html += "<h2>Zeit einstellen</h2>";
 
   html += "<h3>Stelle die Zeit ein, die die Uhr jetzt anzeigt. Klicke dann auf 'Set Time'</h3>";
