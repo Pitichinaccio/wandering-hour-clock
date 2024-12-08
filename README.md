@@ -26,6 +26,10 @@ Things I added:
 
 ![wiring](images/wandering_clock_sound_sch.jpg)
 
+### SD-card for DFPlayer-module
+
+The names and folders for the mp3-files on the  SD -card need to have a certain structure:
+- 3 folders on the root path, called "1", "4", and "15"
 
 ### Arduino Sketch
 - The arduino code in this project adds the following additional features
