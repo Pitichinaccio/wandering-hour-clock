@@ -30,6 +30,10 @@ Things I added:
 
 The names and folders for the mp3-files on the  SD -card need to have a certain structure:
 - 3 folders on the root path, called "1", "4", and "15"
+- the files within the folders must be named in an nnnn.mp3 format (a 4-digit number 0000 - 9999)
+- 3 files in the folder "15" for the strikes at 15, 30 and 45 minutes (named "0015.mp3",  "0030.mp3" and "0045.mp3")
+- 1 file named "0001.mp3" in folder "1" for the strikes at the full hour
+- additional files within folder "15" for the sound at startup ("0004.mp3") and for the [optional 'easter egg';
 
 ### Arduino Sketch
 - The arduino code in this project adds the following additional features
