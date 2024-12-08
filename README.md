@@ -24,7 +24,7 @@ Things I added:
 
 ### Wiring Diagram
 
-images/wandering_clock_sound_sch.jpg
+![wiring](images/wandering_clock_sound_sch.jpg)
 
 
 ### Arduino Sketch
