@@ -39,8 +39,14 @@ The names and folders for the mp3-files on the  SD -card need to have a certain 
 
 ### Arduino Sketch
 - The arduino code in this project adds the following additional features
-  - Uses ESP32 with wifi for time from NTP
-  - Provides a [web server](#web-server) for easier maintenance and troubleshooting
+  - setting the stepper to idle after each move to save energy and avoiding the stepper to get hot
+  - added NTP server of PTB Braunschweig (Germany)
+  - additions on the web interface
+
+### wishlist
+
+Things I would like to implement / improve
+- calibration of the stepper position every 12 hours using a IR sensor (unfortunately, the 28BYJ-48 usualy isn't that accurate as it was designed to open/close ventilation valves for cars, as far as I now)
 
 ## Demo
 ![Timelapse](images/front_slower_small.gif)
