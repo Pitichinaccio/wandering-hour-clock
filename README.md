@@ -24,6 +24,8 @@ Things I added:
 
 ### Wiring Diagram
 
+images/wandering_clock_sound_sch.jpg
+
 
 ### Arduino Sketch
 - The arduino code in this project adds the following additional features
