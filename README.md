@@ -26,7 +26,9 @@ Things I added:
 
 ![wiring](images/wandering_clock_sound_sch.jpg)
 
-I will also add a PCB-Layout later
+The ESP32 and the DFPlayer can be mounted on a PCB.
+
+![PCB](images/wandering_hour_clock_PCB_v1.jpg)
 
 ### SD-card for DFPlayer-module
 
