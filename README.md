@@ -29,6 +29,8 @@ Things I added:
 The ESP32 and the DFPlayer can be mounted on a PCB.
 
 ![PCB](images/wandering_hour_clock_PCB_v1.jpg)
+![PCBtop](images/PCBtop.jpg)
+
 
 ### SD-card for DFPlayer-module
 
