@@ -19,6 +19,7 @@ Things I added:
 - 28BYJ-48 unipolar stepper motor
 - ULN2003 motor driver
 - Mini MP3 Player DFPlayer Module with SD card
+- TCRT 5000  IR-sensor
 - 5V power supply (preferrably with 2A+)
 - Jumper wires
 
@@ -28,8 +29,8 @@ Things I added:
 
 The ESP32 and the DFPlayer can be mounted on a PCB.
 
-![PCB](images/wandering_hour_clock_PCB_v1.jpg)
-![PCBtop](images/PCB_top.jpg)
+![PCB](images/wanderingclock_v2.jpg)
+![PCBtop](images/Jumpers.jpg)
 
 
 ### SD-card for DFPlayer-module
