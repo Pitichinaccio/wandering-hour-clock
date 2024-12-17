@@ -53,6 +53,7 @@ The names and folders for the mp3-files on the  SD -card need to have a certain 
 features I would like to implement / improve
 - calibration of the stepper position every 12 hours using a IR sensor (unfortunately, the 28BYJ-48 usualy isn't that accurate as it was designed to open/close ventilation valves for cars, as far as I now)
 - auto setting the time after startup
+- Neopixel LED ring under the main gear for some light effects
 
 ## Demo
 ![Timelapse](images/front_slower_small.gif)
